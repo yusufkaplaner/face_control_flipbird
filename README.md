@@ -11,7 +11,7 @@ Başlangıçta tüm yüz hatlarını neon çizgilerle çizen siberpunk bir kontr
 
 ## ✨ Özellikler
 * **Göz Kırpma ile Zıplama:** Kamera yüzünüzü algılar; herhangi bir gözünüzü kıstığınızda veya kırptığınızda kuş zıplar (yerçekimi ve sıçrama fiziği entegre edilmiştir).
-* **Asimetrik Göz Kontrolü:** "Game Over" ekranında yeniden başlamak için klavyeye uzanmanıza gerek yok. Sadece **sol gözünüzü kırparak** (sol göz açıkken) oyunu resetleyebilirsiniz.
+* **Asimetrik Göz Kontrolü:** "Game Over" ekranında yeniden başlamak için klavyeye uzanmanıza gerek yok. Sadece **sol gözünüzü kırparak** (sağ göz açıkken) oyunu resetleyebilirsiniz.
 * **Canlı Yüz Geri Bildirimi:** Ekranın sol tarafında, yüz hatlarınızı ve komut anını gösteren neon bir "Cyberpunk Face Mesh" aynası bulunur. Zıplama komutu algılandığında gözler beyaz parlayarak görsel geri bildirim verir.
 * **Retro Grafikler ve Dinamik Zorluk:** Orijinal Flappy Bird varlıkları, piksel fontlar ve skor arttıkça hızlanan dinamik oyun yapısı.
 
