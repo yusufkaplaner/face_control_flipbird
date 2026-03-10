@@ -3,7 +3,6 @@
 > Eller serbest! Sadece gözlerinizi kullanarak oynayabileceğiniz, yapay zeka destekli nostaljik bir Flappy Bird klonu.
 
 ![Flappy Blink Ekran Görüntüsü](ekran-goruntusu.png) 
-*(Not: Kendi aldığın ekran görüntüsünün adını `ekran-goruntusu.png` yapıp proje klasörüne atman yeterli, burada otomatik görünecek.)*
 
 ## 🚀 Proje Hakkında
 Bu proje, standart web kameraları üzerinden gerçek zamanlı yüz takibi (face tracking) yaparak fiziksel bir donanıma (klavye, mouse) ihtiyaç duymadan oyun oynama fikrinden doğdu. Klasik Flappy Bird mekaniklerini, Google'ın **MediaPipe Face Mesh** teknolojisiyle birleştirerek tamamen erişilebilir ve eğlenceli bir deneyim yarattım.
