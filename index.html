@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Flappy Blink: Retro Edition</title>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils"></script>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+
+<style>
+body {
+    margin: 0;
+    background: black;
+    display: flex;
+    height: 100vh;
+    font-family: 'Press Start 2P', cursive;
+    color: #00ffff;
+    overflow: hidden;
+}
+
+#left {
+    width: 50%;
+    position: relative;
+    border-right: 2px solid #00ffff;
+}
+
+#right {
+    width: 50%;
+    position: relative;
+    background-image: url('https://raw.githubusercontent.com/samuelcust/flappy-bird-assets/master/sprites/background-day.png');
+    background-size: cover;
+    background-position: bottom left;
+}
+
+#faceCanvas {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transform: scaleX(-1); /* Kamerayı ayna gibi yapar, sağ/sol hareketin daha doğal olur */
+}
+
+#gameCanvas {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+}
+
+video {
+    display: none;
+}
+
+#ui-layer {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    z-index: 10;
+}
+
+#scoreBoard {
+    font-size: 20px; 
+    font-weight: bold;
+    text-shadow: 2px 2px 0px #000; 
+    color: white; 
+}
+
+#debug-info {
+    font-size: 10px;
+    color: #ff00ff;
+    margin-top: 10px;
+    line-height: 1.5;
+    text-shadow: 1px 1px 0px #000;
+}
+
+#instructions {
+    position: absolute;
+    bottom: 20px;
+    width: 100%;
+    text-align: center;
+    font-size: 10px;
+    color: #fff;
+    text-shadow: 2px 2px 0px #000;
+    z-index: 10;
+}
+</style>
+</head>
+
+<body>
+
+<div id="left">
+    <video id="video" autoplay playsinline></video>
+    <canvas id="faceCanvas"></canvas>
+</div>
+
+<div id="right">
+    <div id="ui-layer">
+        <div id="scoreBoard">SCORE: 0</div>
+        <div id="debug-info">
+            Sol Göz: 0.000<br>
+            Sağ Göz: 0.000
+        </div>
+    </div>
+    <canvas id="gameCanvas"></canvas>
+    <div id="instructions">Zıpla: GÖZÜNÜ KIS | Tekrar Oyna: SAĞ GÖZ KIRP</div>
+</div>
+
+<script>
+// --- GÖRSELLER ---
+const img_bird = new Image(); 
+img_bird.src = "https://raw.githubusercontent.com/samuelcust/flappy-bird-assets/master/sprites/yellowbird-midflap.png"; 
+
+const img_pipe_bottom = new Image();
+img_pipe_bottom.src = "https://raw.githubusercontent.com/samuelcust/flappy-bird-assets/master/sprites/pipe-green.png"; 
+
+// --- KURULUM ---
+const video = document.getElementById("video");
+const faceCanvas = document.getElementById("faceCanvas");
+const faceCtx = faceCanvas.getContext("2d");
+const gameCanvas = document.getElementById("gameCanvas");
+const gameCtx = gameCanvas.getContext("2d");
+const scoreBoard = document.getElementById("scoreBoard");
+const debugInfo = document.getElementById("debug-info");
+
+function resizeCanvases() {
+    faceCanvas.width = window.innerWidth / 2;
+    faceCanvas.height = window.innerHeight;
+    gameCanvas.width = window.innerWidth / 2;
+    gameCanvas.height = window.innerHeight;
+}
+resizeCanvases();
+window.addEventListener('resize', resizeCanvases);
+
+// --- OYUN DEĞİŞKENLERİ ---
+let player = { 
+    x: 100, 
+    y: gameCanvas.height / 2, 
+    width: 34,      
+    height: 24, 
+    velocity: 0, 
+    gravity: 0.5,   
+    jumpStrength: -8 
+};
+
+let obstacles = [];
+let frameCount = 0;
+let score = 0;
+let isGameOver = false;
+let gameSpeed = 5;
+
+const EYE_THRESHOLD = 0.015; 
+let lastJumpTime = 0;
+let jumpEffectTimer = 0; 
+
+// --- YENİDEN BAŞLATMA FONKSİYONU ---
+function resetGame() {
+    player.y = gameCanvas.height / 2;
+    player.velocity = 0;
+    obstacles = [];
+    frameCount = 0;
+    score = 0;
+    gameSpeed = 5;
+    scoreBoard.innerText = "SCORE: " + score;
+    
+    // Oyun bitmişse döngüyü tekrar tetikliyoruz
+    if (isGameOver) {
+        isGameOver = false;
+        gameLoop(); 
+    }
+}
+
+function drawNeonFace(points, p, color="#00ffff", closePath=true) {
+    faceCtx.beginPath();
+    faceCtx.strokeStyle = color;
+    faceCtx.lineWidth = 2;
+    faceCtx.shadowBlur = 10;
+    faceCtx.shadowColor = color;
+
+    let first = p[points[0]];
+    faceCtx.moveTo(first.x * faceCanvas.width, first.y * faceCanvas.height);
+
+    for(let i = 1; i < points.length; i++) {
+        let pt = p[points[i]];
+        faceCtx.lineTo(pt.x * faceCanvas.width, pt.y * faceCanvas.height);
+    }
+    
+    if(closePath) faceCtx.closePath();
+    faceCtx.stroke();
+}
+
+function onResults(results) {
+    faceCtx.clearRect(0, 0, faceCanvas.width, faceCanvas.height);
+
+    if(!results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) return;
+
+    let p = results.multiFaceLandmarks[0];
+    
+    const faceOval = [10,338,297,332,284,251,389,356,454,323,361,288,397,365,379,378,400,377,152,148,176,149,150,136,172,58,132,93,234,127];
+    const leftEye = [33, 160, 158, 133, 153, 144];
+    const rightEye = [362, 385, 387, 263, 373, 380];
+    const lipsOuter = [61, 146, 91, 181, 84, 17, 314, 405, 321, 375, 291, 308, 324, 318, 402, 317, 14, 87, 178, 88, 95];
+    
+    drawNeonFace(faceOval, p, "#00ffff", true);
+    drawNeonFace(leftEye, p, "#ff00ff", true);
+    drawNeonFace(rightEye, p, "#ff00ff", true);
+    drawNeonFace(lipsOuter, p, "#00ff00", true);
+
+    // İKİ GÖZÜ AYRI AYRI ÖLÇÜYORUZ
+    // Sol Göz (159 üst, 145 alt)
+    let distLeft = p[145].y - p[159].y;
+    // Sağ Göz (374 alt, 386 üst)
+    let distRight = p[374].y - p[386].y;
+
+    debugInfo.innerHTML = "Sol Göz: " + distLeft.toFixed(4) + "<br>Sağ Göz: " + distRight.toFixed(4) + "<br>Sınır: " + EYE_THRESHOLD;
+
+    if (isGameOver) {
+        // YENİDEN BAŞLATMA MANTIĞI: Sağ göz kapalı (< threshold) VE Sol göz açık (> threshold)
+        // Sol gözün açık olduğundan emin olmak için ufak bir tolerans (+0.005) ekliyoruz.
+        if (distRight < EYE_THRESHOLD && distLeft > (EYE_THRESHOLD + 0.005)) {
+            resetGame();
+        }
+    } else {
+        // ZIPLAMA MANTIĞI: Herhangi bir göz (sol veya sağ) kısılırsa zıpla
+        if (distLeft < EYE_THRESHOLD || distRight < EYE_THRESHOLD) {
+            let now = Date.now();
+            if (now - lastJumpTime > 200) {
+                player.velocity = player.jumpStrength;
+                lastJumpTime = now;
+                jumpEffectTimer = 5; 
+
+                // Zıplarken gözleri beyaz parlat
+                drawNeonFace(leftEye, p, "#ffffff", true);
+                drawNeonFace(rightEye, p, "#ffffff", true);
+            }
+        }
+    }
+}
+
+function gameLoop() {
+    if (isGameOver) {
+        gameCtx.fillStyle = "rgba(0, 0, 0, 0.7)";
+        gameCtx.fillRect(0, 0, gameCanvas.width, gameCanvas.height);
+        gameCtx.fillStyle = "#ff0055";
+        gameCtx.font = "30px 'Press Start 2P'"; 
+        gameCtx.textAlign = "center";
+        gameCtx.fillText("GAME OVER!", gameCanvas.width / 2, gameCanvas.height / 2);
+        gameCtx.font = "12px 'Press Start 2P'";
+        gameCtx.fillStyle = "#ffffff";
+        gameCtx.fillText("Tekrar Oynamak Icin SOL GOZ KIRP", gameCanvas.width / 2, gameCanvas.height / 2 + 50);
+        return; // Döngüyü durdur
+    }
+
+    gameCtx.clearRect(0, 0, gameCanvas.width, gameCanvas.height);
+
+    player.velocity += player.gravity;
+    player.y += player.velocity;
+
+    if (player.y < 0) {
+        player.y = 0;
+        player.velocity = 0;
+    }
+    if (player.y + player.height > gameCanvas.height) {
+        isGameOver = true;
+    }
+
+    gameCtx.save();
+    gameCtx.translate(player.x + player.width/2, player.y + player.height/2);
+
+    let rotation = (player.velocity * 0.05); 
+    if (rotation > Math.PI/2) rotation = Math.PI/2; 
+    if (rotation < -Math.PI/6) rotation = -Math.PI/6; 
+    gameCtx.rotate(rotation);
+
+    if (jumpEffectTimer > 0) {
+        gameCtx.shadowBlur = 30;
+        gameCtx.shadowColor = "#ffffff";
+        jumpEffectTimer--;
+    } else {
+        gameCtx.shadowBlur = 0; 
+    }
+
+    gameCtx.drawImage(img_bird, -player.width/2, -player.height/2, player.width, player.height);
+    gameCtx.restore();
+
+    if (frameCount % 90 === 0) {
+        let gap = 160; 
+        let minHeight = 50;
+        let maxHeight = gameCanvas.height - gap - minHeight;
+        let topHeight = Math.floor(Math.random() * (maxHeight - minHeight + 1) + minHeight);
+
+        obstacles.push({ x: gameCanvas.width, y: 0, w: 52, h: topHeight, passed: false });
+        obstacles.push({ x: gameCanvas.width, y: topHeight + gap, w: 52, h: gameCanvas.height - topHeight - gap, passed: false });
+    }
+
+    for (let i = obstacles.length - 1; i >= 0; i--) {
+        let obs = obstacles[i];
+        obs.x -= gameSpeed;
+
+        gameCtx.shadowBlur = 0; 
+        
+        if (obs.y === 0) { 
+            gameCtx.save();
+            gameCtx.scale(1, -1); 
+            gameCtx.drawImage(img_pipe_bottom, obs.x, -obs.h, obs.w, obs.h); 
+            gameCtx.restore();
+        } else { 
+            gameCtx.drawImage(img_pipe_bottom, obs.x, obs.y, obs.w, obs.h);
+        }
+
+        let hitX = player.x + player.width > obs.x + 5 && player.x < obs.x + obs.w - 5;
+        let hitY = player.y + player.height > obs.y && player.y < obs.y + obs.h;
+        if (hitX && hitY) isGameOver = true;
+
+        if (obs.y === 0 && !obs.passed && obs.x + obs.w < player.x) {
+            score++;
+            obs.passed = true;
+            scoreBoard.innerText = "SCORE: " + score;
+            if (score % 5 === 0) gameSpeed += 0.5;
+        }
+
+        if (obs.x + obs.w < 0) obstacles.splice(i, 1);
+    }
+
+    frameCount++;
+    requestAnimationFrame(gameLoop);
+}
+
+const faceMesh = new FaceMesh({
+    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
+});
+
+faceMesh.setOptions({
+    maxNumFaces: 1,
+    refineLandmarks: true,
+    minDetectionConfidence: 0.7,
+    minTrackingConfidence: 0.7
+});
+faceMesh.onResults(onResults);
+
+const camera = new Camera(video, {
+    onFrame: async () => { await faceMesh.send({image: video}); },
+    width: 640, height: 480
+});
+
+camera.start().then(() => { gameLoop(); });
+</script>
+
+</body>
+</html>
